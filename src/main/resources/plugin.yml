@@ -2,3 +2,4 @@ name: VillagerCycler
 version: 1.0
 main: villagercycler.VillagerCyclerPlugin
 api-version: '1.21'
+author: domc888
