@@ -126,14 +126,19 @@ public final class VillagerCyclerPlugin extends JavaPlugin implements Listener {
                 if (!(player.getOpenInventory().getTopInventory() instanceof MerchantInventory merchantInventory)) return;
                 if (!(merchantInventory.getMerchant() instanceof Villager villager)) return;
 
-                // FIX: If the player traded and the villager gained XP, destroy the cycler emerald immediately
+                // If the player traded and the villager gained XP, destroy the cycler emerald immediately
                 if (villager.getVillagerExperience() > 0) {
                     cleanUpAndRestore(player);
                     return;
                 }
 
                 cycleVillager(villager);
-                player.updateInventory();
+
+                // Re-open merchant window to immediately update trade offers on client
+                Bukkit.getScheduler().runTask(this, () -> {
+                    player.openMerchant(villager, true);
+                    player.updateInventory();
+                });
             }
         }
     }
