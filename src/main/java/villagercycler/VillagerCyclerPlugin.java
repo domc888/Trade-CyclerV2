@@ -55,6 +55,7 @@ public final class VillagerCyclerPlugin extends JavaPlugin implements Listener {
         if (!(merchantInventory.getMerchant() instanceof Villager villager)) return;
         if (!(event.getPlayer() instanceof Player player)) return;
 
+        // Do not spawn cycler if villager already has trading XP
         if (villager.getVillagerExperience() > 0) return;
 
         ItemStack cyclerEmerald = new ItemStack(Material.EMERALD);
@@ -125,10 +126,13 @@ public final class VillagerCyclerPlugin extends JavaPlugin implements Listener {
                 if (!(player.getOpenInventory().getTopInventory() instanceof MerchantInventory merchantInventory)) return;
                 if (!(merchantInventory.getMerchant() instanceof Villager villager)) return;
 
+                // FIX: If the player traded and the villager gained XP, destroy the cycler emerald immediately
+                if (villager.getVillagerExperience() > 0) {
+                    cleanUpAndRestore(player);
+                    return;
+                }
+
                 cycleVillager(villager);
-                
-                // Mouse-jump fix: We no longer forcefully re-open the UI here.
-                // The server will seamlessly push the new trades to the open window.
                 player.updateInventory();
             }
         }
@@ -174,6 +178,7 @@ public final class VillagerCyclerPlugin extends JavaPlugin implements Listener {
     }
 
     private void cycleVillager(Villager villager) {
+        if (villager.getVillagerExperience() > 0) return; // Hard fail-safe
         Villager.Profession currentProfession = villager.getProfession();
         villager.setRecipes(new ArrayList<>());
         villager.setProfession(Villager.Profession.NONE);
