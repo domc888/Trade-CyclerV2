@@ -10,6 +10,7 @@ import org.bukkit.entity.Villager;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.ClickType;
+import org.bukkit.event.inventory.InventoryAction;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
@@ -64,15 +65,15 @@ public final class VillagerCyclerPlugin extends JavaPlugin implements Listener {
             cyclerEmerald.setItemMeta(meta);
         }
 
-        if (player.getInventory().firstEmpty() == -1) {
-            ItemStack existingItem = player.getInventory().getItem(SWAP_SLOT);
-            if (existingItem != null && existingItem.getType() != Material.AIR) {
+        ItemStack existingItem = player.getInventory().getItem(SWAP_SLOT);
+        
+        if (existingItem != null && existingItem.getType() != Material.AIR) {
+            if (!isCycler(existingItem)) {
                 swappedItems.put(player.getUniqueId(), existingItem.clone());
             }
-            player.getInventory().setItem(SWAP_SLOT, cyclerEmerald);
-        } else {
-            player.getInventory().addItem(cyclerEmerald);
         }
+        
+        player.getInventory().setItem(SWAP_SLOT, cyclerEmerald);
     }
 
     @EventHandler
@@ -81,27 +82,64 @@ public final class VillagerCyclerPlugin extends JavaPlugin implements Listener {
 
         if (event.getClick() == ClickType.NUMBER_KEY) {
             ItemStack hotbarItem = player.getInventory().getItem(event.getHotbarButton());
-            if (isCycler(hotbarItem)) {
+            if (isCycler(hotbarItem) || isCycler(event.getCurrentItem())) {
                 event.setCancelled(true);
+                player.updateInventory();
                 return;
             }
         }
 
         ItemStack clickedItem = event.getCurrentItem();
-        if (!isCycler(clickedItem)) return;
+        ItemStack cursorItem = event.getCursor();
+
+        boolean clickedCycler = isCycler(clickedItem);
+        boolean cursorCycler = isCycler(cursorItem);
+
+        if (!clickedCycler && !cursorCycler) {
+            if (event.getAction() == InventoryAction.COLLECT_TO_CURSOR) {
+                for (ItemStack item : player.getInventory().getContents()) {
+                    if (isCycler(item)) {
+                        event.setCancelled(true);
+                        player.updateInventory();
+                        return;
+                    }
+                }
+            }
+            return;
+        }
 
         event.setCancelled(true);
 
-        if (!(player.getOpenInventory().getTopInventory() instanceof MerchantInventory merchantInventory)) return;
-        if (!(merchantInventory.getMerchant() instanceof Villager villager)) return;
+        if (cursorCycler) {
+            event.getWhoClicked().setItemOnCursor(null);
+        }
 
-        cycleVillager(villager);
+        if (clickedCycler && event.getClickedInventory() != null) {
+            if (event.getClickedInventory() instanceof MerchantInventory) {
+                event.getClickedInventory().setItem(event.getSlot(), null);
+                player.updateInventory();
+                return;
+            }
 
-        Bukkit.getScheduler().runTask(this, () -> player.openMerchant(villager, true));
+            if (event.getClickedInventory().equals(player.getInventory())) {
+                if (!(player.getOpenInventory().getTopInventory() instanceof MerchantInventory merchantInventory)) return;
+                if (!(merchantInventory.getMerchant() instanceof Villager villager)) return;
+
+                cycleVillager(villager);
+                
+                // Mouse-jump fix: We no longer forcefully re-open the UI here.
+                // The server will seamlessly push the new trades to the open window.
+                player.updateInventory();
+            }
+        }
     }
 
     @EventHandler
     public void onInventoryDrag(InventoryDragEvent event) {
+        if (isCycler(event.getOldCursor()) || isCycler(event.getCursor())) {
+            event.setCancelled(true);
+            return;
+        }
         for (ItemStack item : event.getNewItems().values()) {
             if (isCycler(item)) {
                 event.setCancelled(true);
@@ -113,6 +151,11 @@ public final class VillagerCyclerPlugin extends JavaPlugin implements Listener {
     @EventHandler
     public void onInventoryClose(InventoryCloseEvent event) {
         if (!(event.getPlayer() instanceof Player player)) return;
+        
+        if (isCycler(player.getItemOnCursor())) {
+            player.setItemOnCursor(null);
+        }
+        
         cleanUpAndRestore(player);
     }
 
@@ -150,7 +193,7 @@ public final class VillagerCyclerPlugin extends JavaPlugin implements Listener {
             ItemStack originalItem = swappedItems.get(playerId);
             
             ItemStack slot1 = player.getInventory().getItem(SWAP_SLOT);
-            if (slot1 == null || slot1.getType() == Material.AIR) {
+            if (slot1 == null || slot1.getType() == Material.AIR || isCycler(slot1)) {
                 player.getInventory().setItem(SWAP_SLOT, originalItem);
             } else {
                 player.getInventory().addItem(originalItem);
@@ -158,6 +201,8 @@ public final class VillagerCyclerPlugin extends JavaPlugin implements Listener {
             
             swappedItems.remove(playerId);
         }
+        
+        player.updateInventory();
     }
 
     private boolean isCycler(ItemStack item) {
